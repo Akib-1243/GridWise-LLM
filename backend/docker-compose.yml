@@ -14,6 +14,11 @@ services:
       DB_DATABASE: /var/www/html/database/database.sqlite
       SESSION_DRIVER: array
       CACHE_STORE: array
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-8}
     command: php-fpm
 
   nginx:

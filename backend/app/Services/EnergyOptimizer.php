@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\DirectiveTypes;
+use Illuminate\Support\Facades\Http;
 
 class EnergyOptimizer
 {
@@ -16,7 +17,7 @@ class EnergyOptimizer
         ksort($hoursByKey);
         $hours = array_values($hoursByKey);
         $this->assertCompleteHours($hours);
-        $directives = $this->interpretNotes($input['operator_notes'], $input['battery']);
+        $directives = $this->interpretNotesWithConfiguredProvider($input['operator_notes'], $input['battery']);
         $effectiveSolar = $this->effectiveSolar($hours, $directives);
         $plan = $this->buildPlan($hours, $input['battery'], $directives, $effectiveSolar);
 
@@ -100,6 +101,106 @@ class EnergyOptimizer
                 'explanation' => $explanation,
             ];
         }, $notes, array_keys($notes));
+    }
+
+    private function interpretNotesWithConfiguredProvider(array $notes, array $battery): array
+    {
+        if (config('llm.provider') !== 'openai' || !config('llm.api_key')) {
+            return $this->interpretNotes($notes, $battery);
+        }
+
+        try {
+            $response = Http::withToken(config('llm.api_key'))
+                ->acceptJson()
+                ->timeout((int) config('llm.timeout', 8))
+                ->post(rtrim(config('llm.base_url'), '/') . '/chat/completions', [
+                    'model' => config('llm.model', 'gpt-4o-mini'),
+                    'temperature' => 0,
+                    'response_format' => ['type' => 'json_object'],
+                    'messages' => [
+                        [
+                            'role' => 'system',
+                            'content' => 'Interpret energy operator notes into JSON only. Never invent constraints. Return {"directives":[...]} where each directive has note_index, applies, directive_type, structured_adjustment, and explanation. Allowed directive_type values: solar_reduction, minimum_battery_reserve, no_charge_window, no_discharge_window, max_grid_window, no_op. Hours must be integer values from 0 through 23. Use no_op when uncertain or unsupported.',
+                        ],
+                        [
+                            'role' => 'user',
+                            'content' => json_encode([
+                                'notes' => array_values($notes),
+                                'battery' => $battery,
+                            ], JSON_THROW_ON_ERROR),
+                        ],
+                    ],
+                ]);
+
+            if (!$response->successful()) {
+                return $this->interpretNotes($notes, $battery);
+            }
+
+            $payload = $response->json('choices.0.message.content');
+            $decoded = is_string($payload) ? json_decode($payload, true, 512, JSON_THROW_ON_ERROR) : null;
+            $directives = $decoded['directives'] ?? null;
+            if (!is_array($directives) || count($directives) !== count($notes)) {
+                return $this->interpretNotes($notes, $battery);
+            }
+
+            return $this->sanitizeLlmDirectives($directives, $notes, $battery);
+        } catch (\Throwable) {
+            return $this->interpretNotes($notes, $battery);
+        }
+    }
+
+    private function sanitizeLlmDirectives(array $directives, array $notes, array $battery): array
+    {
+        $fallback = $this->interpretNotes($notes, $battery);
+        $sanitized = [];
+        foreach (array_values($directives) as $index => $directive) {
+            $type = $directive['directive_type'] ?? 'no_op';
+            if (!is_string($type) || !in_array($type, DirectiveTypes::ALL, true)) {
+                $sanitized[] = $fallback[$index];
+                continue;
+            }
+
+            $adjustment = $directive['structured_adjustment'] ?? null;
+            $hours = is_array($adjustment) && isset($adjustment['hours']) && is_array($adjustment['hours'])
+                ? array_values(array_unique(array_filter(array_map('intval', $adjustment['hours']), fn (int $hour) => $hour >= 0 && $hour <= 23)))
+                : [];
+            if ($type !== 'no_op' && $hours === []) {
+                $sanitized[] = $fallback[$index];
+                continue;
+            }
+
+            $cleanAdjustment = is_array($adjustment) ? $adjustment : [];
+            $cleanAdjustment['hours'] = $hours;
+            if ($type === 'solar_reduction') {
+                if (!is_numeric($cleanAdjustment['factor'] ?? null) || (float) $cleanAdjustment['factor'] < 0 || (float) $cleanAdjustment['factor'] > 1) {
+                    $sanitized[] = $fallback[$index];
+                    continue;
+                }
+                $cleanAdjustment['factor'] = round((float) $cleanAdjustment['factor'], 4);
+            } elseif ($type === 'minimum_battery_reserve') {
+                if (!is_numeric($cleanAdjustment['minimum_energy_kwh'] ?? null) || (float) $cleanAdjustment['minimum_energy_kwh'] < 0 || (float) $cleanAdjustment['minimum_energy_kwh'] > (float) $battery['capacity_kwh']) {
+                    $sanitized[] = $fallback[$index];
+                    continue;
+                }
+                $cleanAdjustment['minimum_energy_kwh'] = round((float) $cleanAdjustment['minimum_energy_kwh'], 4);
+            } elseif ($type === 'max_grid_window') {
+                if (!is_numeric($cleanAdjustment['max_grid_kwh'] ?? null) || (float) $cleanAdjustment['max_grid_kwh'] < 0) {
+                    $sanitized[] = $fallback[$index];
+                    continue;
+                }
+                $cleanAdjustment['max_grid_kwh'] = round((float) $cleanAdjustment['max_grid_kwh'], 4);
+            }
+            sort($cleanAdjustment['hours']);
+            $sanitized[] = [
+                'note_index' => $index,
+                'applies' => $type !== 'no_op',
+                'directive_type' => $type,
+                'structured_adjustment' => $type === 'no_op' ? null : $cleanAdjustment,
+                'explanation' => is_string($directive['explanation'] ?? null) ? $directive['explanation'] : 'The note does not affect the schedule.',
+            ];
+        }
+
+        return $sanitized;
     }
 
     private function extractHours(string $text): array
