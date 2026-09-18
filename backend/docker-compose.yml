@@ -7,6 +7,8 @@ services:
     volumes:
       - .:/var/www/html
       - backend_vendor:/var/www/html/vendor
+      - backend_database:/var/www/html/database
+      - backend_storage:/var/www/html/storage
     environment:
       APP_ENV: local
       APP_KEY: base64:sDGfJEPNvEVmCC0dOUxowL3Fxqkc/I49YjrfPE2JX54=
@@ -19,7 +21,20 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-8}
-    command: php-fpm
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_NAME: ${ADMIN_NAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-this-in-production}
+    command:
+      - sh
+      - -c
+      - >-
+        composer dump-autoload --no-interaction
+        && mkdir -p database storage/framework/cache storage/framework/sessions storage/framework/views
+        && touch database/database.sqlite
+        && php artisan migrate --force
+        && php artisan db:seed --class='Database\Seeders\DatabaseSeeder' --force
+        && chown -R www-data:www-data database storage
+        && php-fpm
 
   nginx:
     image: nginx:1.27-alpine
@@ -44,4 +59,5 @@ services:
 
 volumes:
   backend_vendor:
-
+  backend_database:
+  backend_storage:
