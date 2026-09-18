@@ -1,0 +1,1 @@
+import cases from './sample-cases.json'; import type{Request,Result}from'../types';const first=(cases as {cases:{input:Request;expected_output:Result}[]}).cases[0];export const demoRequest=first.input;export const demoResult=first.expected_output;

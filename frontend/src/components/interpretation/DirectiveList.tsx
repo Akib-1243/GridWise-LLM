@@ -1,0 +1,1 @@
+import type{Directive}from'../../types';import{DirectiveCard}from'./DirectiveCard';export function DirectiveList({notes,directives}:{notes:string[];directives:Directive[]}){return <div className="space-y-3">{directives.map(d=><DirectiveCard key={d.note_index} note={notes[d.note_index]??'Operator note'} directive={d}/>)}</div>}

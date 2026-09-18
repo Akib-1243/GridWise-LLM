@@ -1,0 +1,1 @@
+import type{ButtonHTMLAttributes,PropsWithChildren}from'react';export function Button({children,...props}:PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>>){return <button className="rounded-xl bg-ink px-4 py-2.5 text-sm font-bold text-white dark:bg-mint dark:text-ink" {...props}>{children}</button>}

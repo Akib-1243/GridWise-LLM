@@ -1,0 +1,1 @@
+export const money=(n:number)=>new Intl.NumberFormat('en-BD',{style:'currency',currency:'BDT',maximumFractionDigits:0}).format(n);export const n=(v:number)=>new Intl.NumberFormat('en-BD',{maximumFractionDigits:1}).format(v);export const h=(v:number)=>`${String(v).padStart(2,'0')}:00`;export const title=(s:string)=>s.replaceAll('_',' ');

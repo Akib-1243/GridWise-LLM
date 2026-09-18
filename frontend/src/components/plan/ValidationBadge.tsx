@@ -1,0 +1,1 @@
+import{CheckCircle2}from'lucide-react';export function ValidationBadge({children}:{children:string}){return <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 dark:bg-emerald-500/10"><CheckCircle2 size={16}/>{children}</div>}
