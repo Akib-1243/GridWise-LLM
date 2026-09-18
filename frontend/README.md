@@ -10,7 +10,7 @@ copy .env.example .env
 npm run dev
 ```
 
-Set `VITE_API_BASE_URL` to the Laravel API origin (no trailing slash). If the API is unavailable, running a scenario displays the public SAMPLE-01 output bundled from the official documentation, so the judge demo remains reliable.
+Set `VITE_API_BASE_URL` to the Laravel API origin (no trailing slash). The default is `http://localhost:8000`. If the API is unavailable, running a scenario displays the public SAMPLE-01 output bundled from the official documentation, so the judge demo remains reliable.
 
 ## Demo flow
 

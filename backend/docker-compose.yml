@@ -7,6 +7,8 @@ services:
     volumes:
       - .:/var/www/html
       - backend_vendor:/var/www/html/vendor
+      - backend_database:/var/www/html/database
+      - backend_storage:/var/www/html/storage
     environment:
       APP_ENV: local
       APP_KEY: base64:sDGfJEPNvEVmCC0dOUxowL3Fxqkc/I49YjrfPE2JX54=
@@ -14,7 +16,10 @@ services:
       DB_DATABASE: /var/www/html/database/database.sqlite
       SESSION_DRIVER: array
       CACHE_STORE: array
-    command: php-fpm
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_NAME: admin
+      ADMIN_PASSWORD: password
+    command: sh -c "composer dump-autoload --no-interaction && php artisan optimize:clear && mkdir -p database storage/framework/cache storage/framework/sessions storage/framework/views && touch database/database.sqlite && php artisan migrate --force && php artisan db:seed --class=Database\\\\Seeders\\\\DatabaseSeeder --force && chown -R www-data:www-data database storage && php-fpm"
 
   nginx:
     image: nginx:1.27-alpine
@@ -39,4 +44,5 @@ services:
 
 volumes:
   backend_vendor:
-
+  backend_database:
+  backend_storage:
