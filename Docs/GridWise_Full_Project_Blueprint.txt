@@ -1,0 +1,693 @@
+GridWise — Full Project Blueprint
+Below is the complete, spec-aligned plan: frontend (ReactJS), backend (PHP Laravel + Docker), ERD, and 3-member work division.
+
+The backend is the judge-facing artifact (must expose GET /health and POST /optimize-energy). The frontend is a team-facing dashboard for testing, visualizing, and demoing — it is not what the judge calls, but it's needed for your video, local testing, and operator UX.
+
+1. High-Level Architecture
+text
+┌─────────────────────┐        ┌──────────────────────────────────────────┐
+│  React Frontend     │  HTTP  │  Laravel Backend (Docker)                │
+│  (Team dashboard)   │ ─────► │                                          │
+│                     │        │  POST /optimize-energy ──► LLM Service   │
+│  - Scenario input   │        │                            (Gemini/GPT)  │
+│  - Notes editor     │        │            │                             │
+│  - Plan visualizer  │        │            ▼                             │
+│  - Case runner      │        │      Guardrail Validator                 │
+│                     │        │            │                             │
+└─────────────────────┘        │            ▼                             │
+                               │      Optimization Engine (LP/MILP)       │
+┌─────────────────────┐        │            │                             │
+│  Judge Harness      │  HTTP  │            ▼                             │
+│  (external)         │ ─────► │      Final Validator ──► JSON response   │
+│  GET /health        │        │                                          │
+│  POST /optimize-... │        │      MySQL: scenarios, runs, directives  │
+└─────────────────────┘        └──────────────────────────────────────────┘
+Critical rule: the judge only calls GET /health and POST /optimize-energy. Frontend must never be required for judging. All judge endpoints must be stateless, fast, and self-contained.
+
+2. Backend — Laravel Project Structure
+text
+gridwise-backend/
+├── app/
+│   ├── Console/
+│   │   └── Kernel.php
+│   ├── Exceptions/
+│   │   └── Handler.php                       # 400/422/500 controlled errors, no stack traces
+│   ├── Http/
+│   │   ├── Controllers/
+│   │   │   ├── HealthController.php          # GET /health
+│   │   │   ├── OptimizeEnergyController.php  # POST /optimize-energy
+│   │   │   └── DashboardController.php       # Frontend support (runs history, stats)
+│   │   ├── Middleware/
+│   │   │   ├── Authenticate.php
+│   │   │   ├── ForceJson.php                 # Ensure JSON in/out
+│   │   │   ├── RequestLogger.php             # Log run metadata (NO secrets)
+│   │   │   └── RateLimiter.php               # Protect /optimize-energy
+│   │   ├── Requests/
+│   │   │   ├── OptimizeEnergyRequest.php     # Validates request schema
+│   │   │   └── StoreScenarioRequest.php
+│   │   └── Resources/
+│   │       ├── DirectiveInterpretationResource.php
+│   │       ├── HourlyPlanResource.php
+│   │       └── OptimizeEnergyResource.php    # Exact response shape
+│   ├── Models/
+│   │   ├── Scenario.php
+│   │   ├── ScenarioHour.php
+│   │   ├── BatteryConfig.php
+│   │   ├── OperatorNote.php
+│   │   ├── DirectiveInterpretation.php
+│   │   ├── OptimizationRun.php
+│   │   ├── HourlyPlanEntry.php
+│   │   └── LlmCallLog.php
+│   ├── Services/
+│   │   ├── Llm/
+│   │   │   ├── LlmInterpreterInterface.php
+│   │   │   ├── GeminiInterpreter.php          # or OpenAI/Claude/local
+│   │   │   ├── MockInterpreter.php            # Fallback / testing
+│   │   │   ├── PromptBuilder.php              # Canonical prompt template
+│   │   │   └── LlmResponseParser.php          # JSON extraction + repair
+│   │   ├── Guardrails/
+│   │   │   ├── DirectiveGuardrail.php         # Validates directive type, hours, factors
+│   │   │   ├── HoursNormalizer.php            # Whole-hour window → [start..end-1]
+│   │   │   ├── FactorNormalizer.php           # "80% reduction" → 0.2
+│   │   │   └── NoOpFallback.php               # Invalid LLM → no_op (never invent)
+│   │   ├── Optimization/
+│   │   │   ├── OptimizerInterface.php
+│   │   │   ├── LpOptimizer.php                # Main MILP/LP solver
+│   │   │   ├── ConstraintBuilder.php          # Applies directives to constraints
+│   │   │   ├── EffectiveSolarCalculator.php
+│   │   │   ├── BatteryTransitionModel.php
+│   │   │   └── ScheduleValidator.php          # Final validator (replay)
+│   │   └── Scenario/
+│   │       ├── ScenarioService.php
+│   │       └── SampleCaseLoader.php           # Loads public sample JSON
+│   ├── Support/
+│   │   ├── Tolerances.php                     # 0.01 kWh / 0.01 BDT
+│   │   └── DirectiveTypes.php                 # Enum constants
+│   └── Providers/
+│       └── AppServiceProvider.php
+├── config/
+│   ├── gridwise.php                           # Tolerances, directive list, defaults
+│   ├── llm.php                                # Provider, model, timeout, retries
+│   └── optimizer.php                          # Solver settings
+├── database/
+│   ├── migrations/
+│   │   ├── 2026_01_01_000001_create_scenarios_table.php
+│   │   ├── 2026_01_01_000002_create_scenario_hours_table.php
+│   │   ├── 2026_01_01_000003_create_battery_configs_table.php
+│   │   ├── 2026_01_01_000004_create_operator_notes_table.php
+│   │   ├── 2026_01_01_000005_create_optimization_runs_table.php
+│   │   ├── 2026_01_01_000006_create_directive_interpretations_table.php
+│   │   ├── 2026_01_01_000007_create_hourly_plan_entries_table.php
+│   │   └── 2026_01_01_000008_create_llm_call_logs_table.php
+│   ├── seeders/
+│   │   └── SampleCaseSeeder.php
+│   └── factories/
+├── routes/
+│   ├── api.php                                # /health, /optimize-energy, /dashboard/*
+│   └── web.php
+├── storage/
+│   └── app/
+│       └── public_samples/
+│           └── public_sample_cases.json       # The 10 cases
+├── tests/
+│   ├── Feature/
+│   │   ├── HealthEndpointTest.php
+│   │   ├── OptimizeEnergyEndpointTest.php
+│   │   ├── PublicSampleCasesTest.php          # Replays all 10 cases
+│   │   └── GuardrailTest.php
+│   └── Unit/
+│       ├── HoursNormalizerTest.php
+│       ├── FactorNormalizerTest.php
+│       ├── EffectiveSolarTest.php
+│       ├── BatteryTransitionTest.php
+│       └── ScheduleValidatorTest.php
+├── docker/
+│   ├── nginx/
+│   │   └── default.conf
+│   ├── php/
+│   │   ├── Dockerfile
+│   │   └── php.ini
+│   └── mysql/
+│       └── init.sql
+├── docker-compose.yml
+├── Dockerfile                                 # Fallback image
+├── .env.example
+├── .dockerignore
+├── composer.json
+└── README.md
+2.1 Key Laravel Endpoints
+Method	Route	Purpose
+GET	/health	Returns {"status":"ok"}
+POST	/optimize-energy	Judge endpoint — full pipeline
+GET	/api/dashboard/scenarios	Frontend: list scenarios
+POST	/api/dashboard/scenarios	Frontend: create scenario
+GET	/api/dashboard/runs	Frontend: run history
+GET	/api/dashboard/runs/{id}	Frontend: run detail
+POST	/api/dashboard/samples/run/{id}	Frontend: replay a public sample
+GET	/api/dashboard/stats	Frontend: aggregate stats
+2.2 OptimizeEnergyController flow (exact)
+text
+1. Validate request (OptimizeEnergyRequest)
+   → 400 malformed JSON, 422 semantic
+2. Persist Scenario + Hours + Battery + Notes
+3. LlmInterpreter::interpret(notes, scenarioContext)
+   → structured directives (untrusted)
+4. DirectiveGuardrail::validate(raw)
+   → hours normalized, factors normalized, unknown → no_op
+5. ConstraintBuilder::build(effectiveSolar, batteryRules, directives)
+6. LpOptimizer::solve()  → hourly_plan
+7. ScheduleValidator::replay(hourly_plan, directives, battery)
+   → if invalid → repair or 500 controlled
+8. Compute totals (total_grid_kwh, total_cost_bdt, peak_grid_kwh)
+9. Return OptimizeEnergyResource  (exact schema)
+2.3 Response contract (must match Problem Statement exactly)
+json
+{
+  "scenario_id": "string",
+  "directive_interpretation": [
+    {
+      "note_index": 0,
+      "applies": true,
+      "directive_type": "solar_reduction",
+      "structured_adjustment": { "hours": [13,14], "factor": 0.2 },
+      "explanation": "string"
+    }
+  ],
+  "hourly_plan": [
+    {
+      "hour": 0,
+      "grid_kwh": 0,
+      "solar_used_kwh": 0,
+      "battery_action": "idle",
+      "battery_kwh": 0,
+      "battery_energy_after_kwh": 0
+    }
+  ],
+  "total_grid_kwh": 0,
+  "total_cost_bdt": 0,
+  "peak_grid_kwh": 0,
+  "plan_summary": "string"
+}
+3. Frontend — ReactJS Project Structure
+text
+gridwise-frontend/
+├── public/
+│   └── index.html
+├── src/
+│   ├── api/
+│   │   ├── client.js                 # Axios instance (base URL from env)
+│   │   ├── health.js
+│   │   ├── optimize.js               # Calls POST /optimize-energy
+│   │   ├── scenarios.js
+│   │   ├── runs.js
+│   │   └── samples.js
+│   ├── assets/
+│   │   └── logo.svg
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── AppShell.jsx
+│   │   │   ├── Sidebar.jsx
+│   │   │   └── Topbar.jsx
+│   │   ├── common/
+│   │   │   ├── Button.jsx
+│   │   │   ├── Card.jsx
+│   │   │   ├── Badge.jsx
+│   │   │   ├── Loader.jsx
+│   │   │   ├── EmptyState.jsx
+│   │   │   └── ErrorBanner.jsx
+│   │   ├── scenario/
+│   │   │   ├── ScenarioForm.jsx
+│   │   │   ├── BatteryForm.jsx
+│   │   │   ├── HoursTable.jsx         # Editable 24-row grid
+│   │   │   ├── HoursCsvUpload.jsx
+│   │   │   └── OperatorNotesEditor.jsx
+│   │   ├── interpretation/
+│   │   │   ├── DirectiveList.jsx
+│   │   │   ├── DirectiveCard.jsx
+│   │   │   ├── HoursBadge.jsx
+│   │   │   └── NoOpBadge.jsx
+│   │   ├── plan/
+│   │   │   ├── PlanTable.jsx
+│   │   │   ├── PlanChart.jsx          # Recharts: grid / solar / battery / tariff
+│   │   │   ├── BatterySocChart.jsx
+│   │   │   ├── CostBreakdown.jsx
+│   │   │   ├── KpiCards.jsx           # total_grid_kwh, cost, peak
+│   │   │   └── PlanValidatorBadge.jsx # Client-side replay check
+│   │   ├── samples/
+│   │   │   ├── SampleCaseList.jsx
+│   │   │   ├── SampleCaseCard.jsx
+│   │   │   └── SampleDiffView.jsx     # Expected vs actual
+│   │   └── health/
+│   │       └── HealthIndicator.jsx
+│   ├── hooks/
+│   │   ├── useHealth.js
+│   │   ├── useOptimize.js
+│   │   ├── useScenarios.js
+│   │   ├── useRuns.js
+│   │   └── useSamples.js
+│   ├── pages/
+│   │   ├── DashboardPage.jsx
+│   │   ├── ScenarioEditorPage.jsx
+│   │   ├── RunDetailPage.jsx
+│   │   ├── SamplesPage.jsx
+│   │   ├── RunsHistoryPage.jsx
+│   │   └── SettingsPage.jsx           # API base URL, LLM provider info
+│   ├── utils/
+│   │   ├── directives.js              # Enum, labels, colors
+│   │   ├── hours.js                   # Window → [start..end-1]
+│   │   ├── factors.js                 # Percentage ↔ factor
+│   │   ├── validators.js              # Client-side schema check
+│   │   ├── replay.js                  # Client-side schedule replay validator
+│   │   └── formatters.js              # kWh, BDT, percent
+│   ├── context/
+│   │   ├── AppContext.jsx
+│   │   └── ToastContext.jsx
+│   ├── styles/
+│   │   ├── globals.css
+│   │   └── theme.js
+│   ├── App.jsx
+│   ├── main.jsx
+│   └── router.jsx
+├── .env.example                       # VITE_API_BASE_URL=http://localhost:8000
+├── package.json
+├── vite.config.js
+├── Dockerfile                         # Optional frontend container
+└── README.md
+3.1 Frontend pages (spec-aligned)
+Page	Purpose	Key features
+Dashboard	Overview + quick run	Health indicator, KPIs, recent runs, "Run sample"
+Scenario Editor	Build/edit a 24h scenario	Hours table, battery form, notes editor, live validation
+Run Detail	Inspect a run	Directive cards, plan table, charts, replay badge
+Samples	Run the 10 public cases	One-click run, diff vs expected, pass/fail
+Runs History	Past runs	Filter, re-run, export JSON
+Settings	Config	API base URL, provider info, tolerance display
+3.2 Frontend must-haves for the video/demo
+Directive cards showing note_index, directive_type, hours, factor/min/max, applies.
+
+Plan chart with 4 series: grid, solar_used, battery action, tariff.
+
+Battery SOC line with min-reserve overlay.
+
+Client-side replay validator that independently checks:
+
+24 unique hours
+
+energy balance per hour
+
+solar ≤ effective solar
+
+battery bounds + rate limits
+
+end-of-day neutrality
+
+totals match plan
+
+Sample diff view highlighting any mismatch vs public expected output.
+
+4. ERD (Entity Relationship Diagram)
+text
+┌─────────────────────┐
+│      scenarios      │
+├─────────────────────┤
+│ id (PK)             │
+│ scenario_id (UQ)    │
+│ label               │
+│ source (enum)       │  manual | sample | judge
+│ created_at          │
+│ updated_at          │
+└─────────┬───────────┘
+          │ 1
+          │
+          ├──────────────► N ┌─────────────────────┐
+          │                  │   scenario_hours    │
+          │                  ├─────────────────────┤
+          │                  │ id (PK)             │
+          │                  │ scenario_id (FK)    │
+          │                  │ hour (0-23)         │
+          │                  │ demand_kwh          │
+          │                  │ solar_kwh           │
+          │                  │ tariff_bdt_per_kwh  │
+          │                  │ UNIQUE(scenario_id, │
+          │                  │        hour)        │
+          │                  └─────────────────────┘
+          │
+          ├──────────────► 1 ┌─────────────────────┐
+          │                  │  battery_configs    │
+          │                  ├─────────────────────┤
+          │                  │ id (PK)             │
+          │                  │ scenario_id (FK,UQ) │
+          │                  │ capacity_kwh        │
+          │                  │ initial_energy_kwh  │
+          │                  │ minimum_energy_kwh  │
+          │                  │ max_charge_kwh_hr   │
+          │                  │ max_discharge_kwh_hr│
+          │                  └─────────────────────┘
+          │
+          ├──────────────► N ┌─────────────────────┐
+          │                  │   operator_notes    │
+          │                  ├─────────────────────┤
+          │                  │ id (PK)             │
+          │                  │ scenario_id (FK)    │
+          │                  │ note_index (0..N-1) │
+          │                  │ note_text           │
+          │                  │ UNIQUE(scenario_id, │
+          │                  │        note_index)  │
+          │                  └─────────────────────┘
+          │
+          └──────────────► N ┌─────────────────────┐
+                             │  optimization_runs  │
+                             ├─────────────────────┤
+                             │ id (PK)             │
+                             │ scenario_id (FK)    │
+                             │ status (enum)       │  success | failed | invalid
+                             │ total_grid_kwh      │
+                             │ total_cost_bdt      │
+                             │ peak_grid_kwh       │
+                             │ plan_summary        │
+                             │ duration_ms         │
+                             │ llm_provider        │
+                             │ llm_model           │
+                             │ error_message       │
+                             │ created_at          │
+                             └─────────┬───────────┘
+                                       │ 1
+                                       │
+                     ┌─────────────────┼─────────────────┐
+                     │ N               │ N               │ N
+                     ▼                 ▼                 ▼
+        ┌──────────────────────┐ ┌──────────────────┐ ┌──────────────────────┐
+        │directive_interpreta- │ │ hourly_plan_     │ │   llm_call_logs      │
+        │tions                 │ │ entries          │ ├──────────────────────┤
+        ├──────────────────────┤ ├──────────────────┤ │ id (PK)              │
+        │ id (PK)              │ │ id (PK)          │ │ run_id (FK)          │
+        │ run_id (FK)          │ │ run_id (FK)      │ │ provider             │
+        │ note_index           │ │ hour (0-23)      │ │ model                │
+        │ applies (bool)       │ │ grid_kwh         │ │ prompt_tokens        │
+        │ directive_type (enum)│ │ solar_used_kwh   │ │ completion_tokens    │
+        │ structured_adjustment│ │ battery_action   │ │ latency_ms           │
+        │   (JSON)             │ │ battery_kwh      │ │ status               │
+        │ explanation (text)   │ │ battery_energy_  │ │ raw_response (text)  │
+        │ UNIQUE(run_id,       │ │   after_kwh      │ │ created_at           │
+        │        note_index)   │ │ UNIQUE(run_id,   │ └──────────────────────┘
+        └──────────────────────┘ │        hour)     │
+                                 └──────────────────┘
+4.1 Enum values
+scenarios.source: manual, sample, judge
+
+optimization_runs.status: success, failed, invalid
+
+directive_interpretations.directive_type: solar_reduction, minimum_battery_reserve, no_charge_window, no_discharge_window, max_grid_window, no_op
+
+hourly_plan_entries.battery_action: charge, discharge, idle
+
+4.2 Notes on the ERD
+structured_adjustment is JSON (MySQL JSON type) because shape varies by directive.
+
+llm_call_logs stores no secrets — only metadata + sanitized response.
+
+optimization_runs stores the computed totals for fast dashboard queries; the judge response is always recomputed from hourly_plan_entries to guarantee consistency.
+
+UNIQUE(run_id, note_index) and UNIQUE(run_id, hour) enforce the exact one-per-note and 24-hour rules at DB level.
+
+5. Docker Setup (Backend)
+5.1 docker-compose.yml (dev)
+yaml
+services:
+  app:
+    build: ./docker/php
+    volumes: [".:/var/www/html"]
+    depends_on: [mysql]
+    environment:
+      - APP_ENV=local
+      - DB_HOST=mysql
+    ports: ["9000:9000"]
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ".:/var/www/html"
+      - "./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf"
+    ports: ["8000:80"]
+    depends_on: [app]
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: gridwise
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    volumes: ["db_data:/var/lib/mysql"]
+    ports: ["3306:3306"]
+
+  queue:
+    build: ./docker/php
+    command: php artisan queue:work
+    depends_on: [mysql]
+
+volumes:
+  db_data:
+5.2 Production fallback Dockerfile
+Multi-stage: composer install → php-fpm + nginx in one image (or supervisor).
+
+Binds 0.0.0.0:8000.
+
+Exposes /health.
+
+No secrets baked in — read from env at runtime.
+
+Tagged with exact digest for the submission.
+
+5.3 .env.example
+text
+APP_NAME=GridWise
+APP_ENV=production
+APP_KEY=
+APP_URL=http://0.0.0.0:8000
+
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=gridwise
+DB_USERNAME=gridwise
+DB_PASSWORD=
+
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-1.5-flash
+LLM_API_KEY=
+LLM_TIMEOUT=20
+LLM_MAX_RETRIES=2
+
+OPTIMIZER_DRIVER=glpk
+GRIDWISE_TOLERANCE_KWH=0.01
+GRIDWISE_TOLERANCE_BDT=0.01
+6. Work Division — 3 Members
+The split is designed so each member owns a vertically complete slice and the interfaces between them are frozen early (the JSON contract).
+
+Member A — LLM Interpretation + Guardrails + Backend API
+Owns: the language → structured directive half of the pipeline and the judge-facing API shell.
+
+Backend files:
+
+app/Services/Llm/* (interpreter, prompt builder, parser, mock fallback)
+
+app/Services/Guardrails/* (directive guardrail, hours normalizer, factor normalizer, no_op fallback)
+
+app/Http/Controllers/HealthController.php
+
+app/Http/Controllers/OptimizeEnergyController.php (orchestration only — delegates to B and C)
+
+app/Http/Requests/OptimizeEnergyRequest.php
+
+app/Http/Resources/DirectiveInterpretationResource.php
+
+app/Http/Middleware/ForceJson.php, RateLimiter.php
+
+config/llm.php, config/gridwise.php
+
+tests/Feature/HealthEndpointTest.php
+
+tests/Feature/GuardrailTest.php
+
+tests/Unit/HoursNormalizerTest.php
+
+tests/Unit/FactorNormalizerTest.php
+
+Deliverables:
+
+Prompt template that reliably extracts directive_type, hours, factor/minimum_energy_kwh/max_grid_kwh, and no_op.
+
+Paraphrase robustness: "80% reduction" → factor 0.2; "1 PM to 3 PM" → [13,14]; "50% of capacity" → 100 kWh when capacity = 200.
+
+Deterministic guardrail that never invents a directive — invalid LLM output → no_op.
+
+GET /health returning {"status":"ok"} within 60s of boot.
+
+POST /optimize-energy returns 200/400/422/500 correctly, no stack traces.
+
+Frontend files (shared):
+
+src/api/health.js, src/api/optimize.js
+
+src/components/interpretation/* (DirectiveList, DirectiveCard, HoursBadge, NoOpBadge)
+
+src/hooks/useHealth.js, src/hooks/useOptimize.js
+
+src/utils/directives.js, src/utils/hours.js, src/utils/factors.js
+
+Video segment: LLM → guardrail flow, prompt design, paraphrase handling, no_op policy.
+
+Member B — Optimization Engine + Constraint Builder + Final Validator
+Owns: the structured directive → valid low-cost schedule half, plus the mathematical correctness guarantees.
+
+Backend files:
+
+app/Services/Optimization/* (LpOptimizer, ConstraintBuilder, EffectiveSolarCalculator, BatteryTransitionModel, ScheduleValidator)
+
+app/Support/Tolerances.php, app/Support/DirectiveTypes.php
+
+config/optimizer.php
+
+tests/Feature/PublicSampleCasesTest.php (replays all 10 cases)
+
+tests/Unit/EffectiveSolarTest.php
+
+tests/Unit/BatteryTransitionTest.php
+
+tests/Unit/ScheduleValidatorTest.php
+
+Deliverables:
+
+MILP/LP model with:
+
+energy balance per hour
+
+solar ≤ effective solar
+
+battery bounds + rate limits + end-of-day neutrality
+
+solar_reduction, minimum_battery_reserve, no_charge_window, no_discharge_window, max_grid_window constraints
+
+ScheduleValidator::replay() that independently re-derives all constraints from the returned plan (this is what makes the judge's replay pass).
+
+Cost calculation matching the Problem Statement formula.
+
+Handles edge cases: both costs ≈ 0 → ratio 1; infeasible → controlled failure.
+
+Frontend files (shared):
+
+src/components/plan/* (PlanTable, PlanChart, BatterySocChart, CostBreakdown, KpiCards, PlanValidatorBadge)
+
+src/utils/replay.js (client-side replay — mirrors backend validator)
+
+src/utils/validators.js
+
+src/pages/RunDetailPage.jsx
+
+Video segment: optimization model, constraint construction, replay validator, how directives change the math.
+
+Member C — Data Layer + Frontend Shell + Docker + Documentation
+Owns: persistence, dashboard UX, deployment, and the reproducibility story (which is 20 of 100 points across Deployment + Documentation).
+
+Backend files:
+
+All database/migrations/*
+
+All app/Models/*
+
+app/Http/Controllers/DashboardController.php
+
+app/Services/Scenario/ScenarioService.php, SampleCaseLoader.php
+
+database/seeders/SampleCaseSeeder.php
+
+storage/app/public_samples/public_sample_cases.json
+
+docker-compose.yml, docker/php/Dockerfile, docker/nginx/default.conf, Dockerfile
+
+.env.example, .dockerignore
+
+README.md
+
+Frontend files:
+
+src/components/layout/*, src/components/common/*
+
+src/components/scenario/* (ScenarioForm, BatteryForm, HoursTable, HoursCsvUpload, OperatorNotesEditor)
+
+src/components/samples/* (SampleCaseList, SampleCaseCard, SampleDiffView)
+
+src/pages/DashboardPage.jsx, ScenarioEditorPage.jsx, SamplesPage.jsx, RunsHistoryPage.jsx, SettingsPage.jsx
+
+src/api/scenarios.js, src/api/runs.js, src/api/samples.js
+
+src/hooks/useScenarios.js, useRuns.js, useSamples.js
+
+src/context/*, src/styles/*, src/App.jsx, src/main.jsx, src/router.jsx
+
+vite.config.js, package.json, .env.example (frontend)
+
+Deliverables:
+
+Exact ERD above implemented as migrations.
+
+Seeder that loads the 10 public cases.
+
+Dashboard that can: create scenario, edit 24 hours, add notes, run optimize, visualize directives + plan + charts, replay public samples, show pass/fail vs expected.
+
+Working docker-compose up for local dev.
+
+Pullable fallback image with exact tag/digest, exposed port, binds 0.0.0.0, no secrets.
+
+Self-contained README: setup, env var names, model/provider, LLM role, guardrails, solver, exact run command, /health curl, /optimize-energy curl, public-sample test command, dependencies, limitations, secret-handling.
+
+Video segment: architecture overview, Docker fallback, README walkthrough, end-to-end demo.
+
+7. Interface Freeze (Do This First — Day 0)
+Before anyone writes code, freeze:
+
+Request JSON — exactly as Problem Statement §7.
+
+Response JSON — exactly as Problem Statement §10.
+
+Directive enum + structured_adjustment shapes — exactly as §04.
+
+Tolerance constants — 0.01 kWh / 0.01 BDT.
+
+Internal service interfaces:
+
+LlmInterpreterInterface::interpret(array $notes, array $context): array
+
+DirectiveGuardrail::validate(array $raw): array
+
+ConstraintBuilder::build(array $effectiveSolar, array $battery, array $directives): array
+
+LpOptimizer::solve(array $constraints): array
+
+ScheduleValidator::replay(array $plan, array $directives, array $battery): bool
+
+With these frozen, A, B, and C can work in parallel without blocking.
+
+8. Suggested 4-Hour Timeline (Round Day)
+Time	Member A	Member B	Member C
+0:00–0:30	Freeze interfaces, prompt v1	Freeze optimizer interface, sample loader	Freeze ERD, migrations, docker-compose
+0:30–1:30	LLM + parser + guardrails	MILP model + constraints	Models + dashboard shell
+1:30–2:30	Endpoint wiring + health	Replay validator + sample tests	Frontend pages + charts
+2:30–3:15	Paraphrase hardening	Edge cases, tolerances	Docker fallback + README
+3:15–3:45	Integration test all 10 samples	Integration test all 10 samples	Deploy + smoke test
+3:45–4:00	Record video segment	Record video segment	Record video segment + submit
+9. Non-Negotiables (Checklist)
+□ GET /health → {"status":"ok"} within 60s.
+□ POST /optimize-energy completes < 30s (target p95 < 5s).
+□ Exactly one directive_interpretation per note, in note_index order.
+□ no_op → applies=false, structured_adjustment=null.
+□ All other directives → applies=true.
+□ Hours: unique ints 0–23 ascending; windows start-inclusive, end-exclusive.
+□ solar_reduction.factor = remaining fraction (80% reduction → 0.2).
+□ Energy balance holds every hour.
+□ Battery bounds, rate limits, end-of-day neutrality hold.
+□ total_grid_kwh, total_cost_bdt, peak_grid_kwh match recomputation.
+□ No secrets in repo, logs, or responses.
+□ Docker image pullable, /health reachable, port exposed, no baked secrets.
+□ README self-contained; clean-machine quickstart works.
+□ Repo created after reveal, private during, public after deadline.
+□ 3-minute video accessible.
+This blueprint is directly aligned with the Problem Statement, the Participant Guide, and the Public Sample Cases JSON.

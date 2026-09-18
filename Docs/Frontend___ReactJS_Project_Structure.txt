@@ -1,0 +1,83 @@
+gridwise-frontend/
+├── public/
+│   └── index.html
+├── src/
+│   ├── api/
+│   │   ├── client.js                 # Axios instance (base URL from env)
+│   │   ├── health.js
+│   │   ├── optimize.js               # Calls POST /optimize-energy
+│   │   ├── scenarios.js
+│   │   ├── runs.js
+│   │   └── samples.js
+│   ├── assets/
+│   │   └── logo.svg
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── AppShell.jsx
+│   │   │   ├── Sidebar.jsx
+│   │   │   └── Topbar.jsx
+│   │   ├── common/
+│   │   │   ├── Button.jsx
+│   │   │   ├── Card.jsx
+│   │   │   ├── Badge.jsx
+│   │   │   ├── Loader.jsx
+│   │   │   ├── EmptyState.jsx
+│   │   │   └── ErrorBanner.jsx
+│   │   ├── scenario/
+│   │   │   ├── ScenarioForm.jsx
+│   │   │   ├── BatteryForm.jsx
+│   │   │   ├── HoursTable.jsx         # Editable 24-row grid
+│   │   │   ├── HoursCsvUpload.jsx
+│   │   │   └── OperatorNotesEditor.jsx
+│   │   ├── interpretation/
+│   │   │   ├── DirectiveList.jsx
+│   │   │   ├── DirectiveCard.jsx
+│   │   │   ├── HoursBadge.jsx
+│   │   │   └── NoOpBadge.jsx
+│   │   ├── plan/
+│   │   │   ├── PlanTable.jsx
+│   │   │   ├── PlanChart.jsx          # Recharts: grid / solar / battery / tariff
+│   │   │   ├── BatterySocChart.jsx
+│   │   │   ├── CostBreakdown.jsx
+│   │   │   ├── KpiCards.jsx           # total_grid_kwh, cost, peak
+│   │   │   └── PlanValidatorBadge.jsx # Client-side replay check
+│   │   ├── samples/
+│   │   │   ├── SampleCaseList.jsx
+│   │   │   ├── SampleCaseCard.jsx
+│   │   │   └── SampleDiffView.jsx     # Expected vs actual
+│   │   └── health/
+│   │       └── HealthIndicator.jsx
+│   ├── hooks/
+│   │   ├── useHealth.js
+│   │   ├── useOptimize.js
+│   │   ├── useScenarios.js
+│   │   ├── useRuns.js
+│   │   └── useSamples.js
+│   ├── pages/
+│   │   ├── DashboardPage.jsx
+│   │   ├── ScenarioEditorPage.jsx
+│   │   ├── RunDetailPage.jsx
+│   │   ├── SamplesPage.jsx
+│   │   ├── RunsHistoryPage.jsx
+│   │   └── SettingsPage.jsx           # API base URL, LLM provider info
+│   ├── utils/
+│   │   ├── directives.js              # Enum, labels, colors
+│   │   ├── hours.js                   # Window → [start..end-1]
+│   │   ├── factors.js                 # Percentage ↔ factor
+│   │   ├── validators.js              # Client-side schema check
+│   │   ├── replay.js                  # Client-side schedule replay validator
+│   │   └── formatters.js              # kWh, BDT, percent
+│   ├── context/
+│   │   ├── AppContext.jsx
+│   │   └── ToastContext.jsx
+│   ├── styles/
+│   │   ├── globals.css
+│   │   └── theme.js
+│   ├── App.jsx
+│   ├── main.jsx
+│   └── router.jsx
+├── .env.example                       # VITE_API_BASE_URL=http://localhost:8000
+├── package.json
+├── vite.config.js
+├── Dockerfile                         # Optional frontend container
+└── README.md

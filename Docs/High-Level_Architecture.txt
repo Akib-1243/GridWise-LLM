@@ -1,0 +1,17 @@
+┌─────────────────────┐        ┌──────────────────────────────────────────┐
+│  React Frontend     │  HTTP  │  Laravel Backend (Docker)                │
+│  (Team dashboard)   │ ─────► │                                          │
+│                     │        │  POST /optimize-energy ──► LLM Service   │
+│  - Scenario input   │        │                            (Gemini/GPT)  │
+│  - Notes editor     │        │            │                             │
+│  - Plan visualizer  │        │            ▼                             │
+│  - Case runner      │        │      Guardrail Validator                 │
+│                     │        │            │                             │
+└─────────────────────┘        │            ▼                             │
+                               │      Optimization Engine (LP/MILP)       │
+┌─────────────────────┐        │            │                             │
+│  Judge Harness      │  HTTP  │            ▼                             │
+│  (external)         │ ─────► │      Final Validator ──► JSON response   │
+│  GET /health        │        │                                          │
+│  POST /optimize-... │        │      MySQL: scenarios, runs, directives  │
+└─────────────────────┘        └──────────────────────────────────────────┘

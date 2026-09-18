@@ -1,0 +1,85 @@
+┌─────────────────────┐
+│      scenarios      │
+├─────────────────────┤
+│ id (PK)             │
+│ scenario_id (UQ)    │
+│ label               │
+│ source (enum)       │  manual | sample | judge
+│ created_at          │
+│ updated_at          │
+└─────────┬───────────┘
+          │ 1
+          │
+          ├──────────────► N ┌─────────────────────┐
+          │                  │   scenario_hours    │
+          │                  ├─────────────────────┤
+          │                  │ id (PK)             │
+          │                  │ scenario_id (FK)    │
+          │                  │ hour (0-23)         │
+          │                  │ demand_kwh          │
+          │                  │ solar_kwh           │
+          │                  │ tariff_bdt_per_kwh  │
+          │                  │ UNIQUE(scenario_id, │
+          │                  │        hour)        │
+          │                  └─────────────────────┘
+          │
+          ├──────────────► 1 ┌─────────────────────┐
+          │                  │  battery_configs    │
+          │                  ├─────────────────────┤
+          │                  │ id (PK)             │
+          │                  │ scenario_id (FK,UQ) │
+          │                  │ capacity_kwh        │
+          │                  │ initial_energy_kwh  │
+          │                  │ minimum_energy_kwh  │
+          │                  │ max_charge_kwh_hr   │
+          │                  │ max_discharge_kwh_hr│
+          │                  └─────────────────────┘
+          │
+          ├──────────────► N ┌─────────────────────┐
+          │                  │   operator_notes    │
+          │                  ├─────────────────────┤
+          │                  │ id (PK)             │
+          │                  │ scenario_id (FK)    │
+          │                  │ note_index (0..N-1) │
+          │                  │ note_text           │
+          │                  │ UNIQUE(scenario_id, │
+          │                  │        note_index)  │
+          │                  └─────────────────────┘
+          │
+          └──────────────► N ┌─────────────────────┐
+                             │  optimization_runs  │
+                             ├─────────────────────┤
+                             │ id (PK)             │
+                             │ scenario_id (FK)    │
+                             │ status (enum)       │  success | failed | invalid
+                             │ total_grid_kwh      │
+                             │ total_cost_bdt      │
+                             │ peak_grid_kwh       │
+                             │ plan_summary        │
+                             │ duration_ms         │
+                             │ llm_provider        │
+                             │ llm_model           │
+                             │ error_message       │
+                             │ created_at          │
+                             └─────────┬───────────┘
+                                       │ 1
+                                       │
+                     ┌─────────────────┼─────────────────┐
+                     │ N               │ N               │ N
+                     ▼                 ▼                 ▼
+        ┌──────────────────────┐ ┌──────────────────┐ ┌──────────────────────┐
+        │directive_interpreta- │ │ hourly_plan_     │ │   llm_call_logs      │
+        │tions                 │ │ entries          │ ├──────────────────────┤
+        ├──────────────────────┤ ├──────────────────┤ │ id (PK)              │
+        │ id (PK)              │ │ id (PK)          │ │ run_id (FK)          │
+        │ run_id (FK)          │ │ run_id (FK)      │ │ provider             │
+        │ note_index           │ │ hour (0-23)      │ │ model                │
+        │ applies (bool)       │ │ grid_kwh         │ │ prompt_tokens        │
+        │ directive_type (enum)│ │ solar_used_kwh   │ │ completion_tokens    │
+        │ structured_adjustment│ │ battery_action   │ │ latency_ms           │
+        │   (JSON)             │ │ battery_kwh      │ │ status               │
+        │ explanation (text)   │ │ battery_energy_  │ │ raw_response (text)  │
+        │ UNIQUE(run_id,       │ │   after_kwh      │ │ created_at           │
+        │        note_index)   │ │ UNIQUE(run_id,   │ └──────────────────────┘
+        └──────────────────────┘ │        hour)     │
+                                 └──────────────────┘

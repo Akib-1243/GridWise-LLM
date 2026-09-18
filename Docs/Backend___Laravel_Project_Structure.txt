@@ -1,0 +1,109 @@
+gridwise-backend/
+├── app/
+│   ├── Console/
+│   │   └── Kernel.php
+│   ├── Exceptions/
+│   │   └── Handler.php                       # 400/422/500 controlled errors, no stack traces
+│   ├── Http/
+│   │   ├── Controllers/
+│   │   │   ├── HealthController.php          # GET /health
+│   │   │   ├── OptimizeEnergyController.php  # POST /optimize-energy
+│   │   │   └── DashboardController.php       # Frontend support (runs history, stats)
+│   │   ├── Middleware/
+│   │   │   ├── Authenticate.php
+│   │   │   ├── ForceJson.php                 # Ensure JSON in/out
+│   │   │   ├── RequestLogger.php             # Log run metadata (NO secrets)
+│   │   │   └── RateLimiter.php               # Protect /optimize-energy
+│   │   ├── Requests/
+│   │   │   ├── OptimizeEnergyRequest.php     # Validates request schema
+│   │   │   └── StoreScenarioRequest.php
+│   │   └── Resources/
+│   │       ├── DirectiveInterpretationResource.php
+│   │       ├── HourlyPlanResource.php
+│   │       └── OptimizeEnergyResource.php    # Exact response shape
+│   ├── Models/
+│   │   ├── Scenario.php
+│   │   ├── ScenarioHour.php
+│   │   ├── BatteryConfig.php
+│   │   ├── OperatorNote.php
+│   │   ├── DirectiveInterpretation.php
+│   │   ├── OptimizationRun.php
+│   │   ├── HourlyPlanEntry.php
+│   │   └── LlmCallLog.php
+│   ├── Services/
+│   │   ├── Llm/
+│   │   │   ├── LlmInterpreterInterface.php
+│   │   │   ├── GeminiInterpreter.php          # or OpenAI/Claude/local
+│   │   │   ├── MockInterpreter.php            # Fallback / testing
+│   │   │   ├── PromptBuilder.php              # Canonical prompt template
+│   │   │   └── LlmResponseParser.php          # JSON extraction + repair
+│   │   ├── Guardrails/
+│   │   │   ├── DirectiveGuardrail.php         # Validates directive type, hours, factors
+│   │   │   ├── HoursNormalizer.php            # Whole-hour window → [start..end-1]
+│   │   │   ├── FactorNormalizer.php           # "80% reduction" → 0.2
+│   │   │   └── NoOpFallback.php               # Invalid LLM → no_op (never invent)
+│   │   ├── Optimization/
+│   │   │   ├── OptimizerInterface.php
+│   │   │   ├── LpOptimizer.php                # Main MILP/LP solver
+│   │   │   ├── ConstraintBuilder.php          # Applies directives to constraints
+│   │   │   ├── EffectiveSolarCalculator.php
+│   │   │   ├── BatteryTransitionModel.php
+│   │   │   └── ScheduleValidator.php          # Final validator (replay)
+│   │   └── Scenario/
+│   │       ├── ScenarioService.php
+│   │       └── SampleCaseLoader.php           # Loads public sample JSON
+│   ├── Support/
+│   │   ├── Tolerances.php                     # 0.01 kWh / 0.01 BDT
+│   │   └── DirectiveTypes.php                 # Enum constants
+│   └── Providers/
+│       └── AppServiceProvider.php
+├── config/
+│   ├── gridwise.php                           # Tolerances, directive list, defaults
+│   ├── llm.php                                # Provider, model, timeout, retries
+│   └── optimizer.php                          # Solver settings
+├── database/
+│   ├── migrations/
+│   │   ├── 2026_01_01_000001_create_scenarios_table.php
+│   │   ├── 2026_01_01_000002_create_scenario_hours_table.php
+│   │   ├── 2026_01_01_000003_create_battery_configs_table.php
+│   │   ├── 2026_01_01_000004_create_operator_notes_table.php
+│   │   ├── 2026_01_01_000005_create_optimization_runs_table.php
+│   │   ├── 2026_01_01_000006_create_directive_interpretations_table.php
+│   │   ├── 2026_01_01_000007_create_hourly_plan_entries_table.php
+│   │   └── 2026_01_01_000008_create_llm_call_logs_table.php
+│   ├── seeders/
+│   │   └── SampleCaseSeeder.php
+│   └── factories/
+├── routes/
+│   ├── api.php                                # /health, /optimize-energy, /dashboard/*
+│   └── web.php
+├── storage/
+│   └── app/
+│       └── public_samples/
+│           └── public_sample_cases.json       # The 10 cases
+├── tests/
+│   ├── Feature/
+│   │   ├── HealthEndpointTest.php
+│   │   ├── OptimizeEnergyEndpointTest.php
+│   │   ├── PublicSampleCasesTest.php          # Replays all 10 cases
+│   │   └── GuardrailTest.php
+│   └── Unit/
+│       ├── HoursNormalizerTest.php
+│       ├── FactorNormalizerTest.php
+│       ├── EffectiveSolarTest.php
+│       ├── BatteryTransitionTest.php
+│       └── ScheduleValidatorTest.php
+├── docker/
+│   ├── nginx/
+│   │   └── default.conf
+│   ├── php/
+│   │   ├── Dockerfile
+│   │   └── php.ini
+│   └── mysql/
+│       └── init.sql
+├── docker-compose.yml
+├── Dockerfile                                 # Fallback image
+├── .env.example
+├── .dockerignore
+├── composer.json
+└── README.md

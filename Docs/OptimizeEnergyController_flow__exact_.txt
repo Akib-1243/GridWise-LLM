@@ -1,0 +1,13 @@
+1. Validate request (OptimizeEnergyRequest)
+   → 400 malformed JSON, 422 semantic
+2. Persist Scenario + Hours + Battery + Notes
+3. LlmInterpreter::interpret(notes, scenarioContext)
+   → structured directives (untrusted)
+4. DirectiveGuardrail::validate(raw)
+   → hours normalized, factors normalized, unknown → no_op
+5. ConstraintBuilder::build(effectiveSolar, batteryRules, directives)
+6. LpOptimizer::solve()  → hourly_plan
+7. ScheduleValidator::replay(hourly_plan, directives, battery)
+   → if invalid → repair or 500 controlled
+8. Compute totals (total_grid_kwh, total_cost_bdt, peak_grid_kwh)
+9. Return OptimizeEnergyResource  (exact schema)
