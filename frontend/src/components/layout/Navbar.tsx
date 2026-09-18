@@ -1,1 +1,19 @@
-import{Activity,Moon,Sun}from'lucide-react';import{useHealth}from'../../hooks/useHealth';export function Navbar(){const{isSuccess}=useHealth();return <header className="flex h-20 items-center justify-between border-b border-slate-200 px-5 dark:border-white/10"><div><p className="label">Campus operations</p><b>Energy command center</b></div><div className="flex items-center gap-3"><span className="flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-700"><Activity size={14}/>{isSuccess?'API online':'Demo mode'}</span><button onClick={()=>document.documentElement.classList.toggle('dark')}><Sun className="dark:hidden" size={18}/><Moon className="hidden dark:block" size={18}/></button></div></header>}
+import { Activity } from 'lucide-react';
+import { useHealth } from '../../hooks/useHealth';
+
+export function Navbar() {
+  const { isSuccess } = useHealth();
+
+  return (
+    <header className="flex h-20 items-center justify-between border-b border-white/10 bg-[#10232d] px-5">
+      <div>
+        <p className="label">Campus operations</p>
+        <b>Energy command center</b>
+      </div>
+      <span className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${isSuccess ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'}`}>
+        <Activity size={14} />
+        {isSuccess ? 'API online' : 'Demo mode'}
+      </span>
+    </header>
+  );
+}

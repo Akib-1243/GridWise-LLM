@@ -1,2 +1,54 @@
-import type{PropsWithChildren}from'react';import{NavLink}from'react-router-dom';import{Activity,BarChart3,Settings2,Sparkles,Sun,Moon}from'lucide-react';import{useHealth}from'../../hooks/useHealth';
-export function Shell({children}:PropsWithChildren){const{isSuccess}=useHealth();return <div className="min-h-screen"><div className="flex"><aside className="hidden min-h-screen w-64 shrink-0 border-r border-slate-200 bg-white p-5 lg:block dark:border-white/10 dark:bg-[#091925]"><div className="mb-12 flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-mint"><Sparkles size={20}/></div><div><b>GRIDWISE</b><p className="text-[10px] font-bold tracking-widest text-cyan">ENERGY AI</p></div></div>{[['/',BarChart3,'Command center'],['/scenario',Settings2,'New scenario'],['/results',Sparkles,'Optimization plan']].map(([to,Icon,label])=>{const I=Icon as typeof Sparkles;return <NavLink key={to as string} to={to as string} className={({isActive})=>`mb-2 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium ${isActive?'bg-ink text-white dark:bg-mint dark:text-ink':'muted hover:bg-slate-100 dark:hover:bg-white/5'}`}><I size={18}/>{label as string}</NavLink>})}</aside><main className="min-w-0 flex-1"><header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white/80 px-5 backdrop-blur dark:border-white/10 dark:bg-[#091925]/80"><div><p className="label">Campus operations</p><b>Energy command center</b></div><div className="flex items-center gap-3"><span className={`hidden items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold sm:flex ${isSuccess?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'}`}><Activity size={14}/>{isSuccess?'API online':'Demo mode'}</span><button onClick={()=>document.documentElement.classList.toggle('dark')} className="rounded-xl p-2 hover:bg-slate-100 dark:hover:bg-white/10"><Sun size={18} className="dark:hidden"/><Moon size={18} className="hidden dark:block"/></button><div className="grid h-9 w-9 place-items-center rounded-full bg-cyan text-xs font-bold">OP</div></div></header><div className="mx-auto max-w-[1500px] p-5 md:p-8">{children}</div></main></div></div>}
+import type { PropsWithChildren } from 'react';
+import { NavLink } from 'react-router-dom';
+import { Activity, BarChart3, ClipboardList, Settings2 } from 'lucide-react';
+import { useHealth } from '../../hooks/useHealth';
+
+export function Shell({ children }: PropsWithChildren) {
+  const { isSuccess } = useHealth();
+
+  return (
+    <div className="min-h-screen bg-[#0d2029] text-[#edf4f3]">
+      <div className="flex">
+        <aside className="hidden min-h-screen w-64 shrink-0 border-r border-white/10 bg-[#10232d] p-6 lg:block">
+          <div className="mb-14 px-3">
+            <b className="text-base tracking-[.08em]">GRIDWISE</b>
+            <p className="mt-1 text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400">Energy operations</p>
+          </div>
+          {[
+            ['/', BarChart3, 'Command center'],
+            ['/scenario', Settings2, 'New scenario'],
+            ['/results', ClipboardList, 'Optimization plan'],
+          ].map(([to, Icon, label]) => {
+            const NavigationIcon = Icon as typeof ClipboardList;
+            return (
+              <NavLink
+                key={to as string}
+                to={to as string}
+                className={({ isActive }) => `mb-2 flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium ${isActive ? 'bg-[#2f8f83] text-[#071b24]' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+              >
+                <NavigationIcon size={18} />
+                {label as string}
+              </NavLink>
+            );
+          })}
+        </aside>
+        <main className="min-w-0 flex-1">
+          <header className="flex h-20 items-center justify-between border-b border-white/10 bg-[#10232d] px-5">
+            <div>
+              <p className="label">Campus operations</p>
+              <b>Energy command center</b>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className={`hidden items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold sm:flex ${isSuccess ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'}`}>
+                <Activity size={14} />
+                {isSuccess ? 'API online' : 'Demo mode'}
+              </span>
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-xs font-bold text-slate-300">OP</div>
+            </div>
+          </header>
+          <div className="mx-auto max-w-[1500px] p-5 md:p-8">{children}</div>
+        </main>
+      </div>
+    </div>
+  );
+}
